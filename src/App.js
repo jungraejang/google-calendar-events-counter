@@ -13,56 +13,89 @@ class App extends React.Component {
       endDate: null,
       fetchMessage: null,
       count: null,
-      filteredEvents: null
+      filteredEvents: null,
     };
   }
 
-  fetchEventsData = () => {
-    let { calendarId } = this.state;
-    let apiKey = "AIzaSyDyj2EMI6tvgE76x7oLx2jbaUWHU-FW5ng";
-    axios
-      .get(
-        `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?key=${apiKey}&maxResults=2500`
-      )
-      .then(res => {
-        console.log("res: ", res);
-        this.setState({
-          events: res.data.items,
-          fetchMessage: "Successfully fetched all events",
-          count: this.processEvents(res.data.items).length,
-          filteredEvents: this.processEvents(res.data.items)
-        });
+  // Updated fetchEventsData with pagination
+  fetchEventsData = async () => {
+    const { calendarId } = this.state;
+    // Replace this key with your own valid Google API key (or secure it server-side)
+    const apiKey = "AIzaSyAswGe1JBeS2co-1o1IC29K3savoRB742o";
+
+    let allEvents = [];
+    let pageToken = null;
+
+    try {
+      do {
+        // Construct the URL for each "page" of results
+        let url = `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?key=${apiKey}&maxResults=2500`;
+        if (pageToken) {
+          url += `&pageToken=${pageToken}`;
+        }
+
+        const res = await axios.get(url);
+        const { items, nextPageToken } = res.data;
+
+        // Combine new items with total list
+        allEvents = [...allEvents, ...items];
+        // If there's a token, we loop again; if not, we're done
+        pageToken = nextPageToken;
+      } while (pageToken);
+
+      // Process the aggregated events
+      const processed = this.processEvents(allEvents);
+      this.setState({
+        events: allEvents,
+        fetchMessage: "Successfully fetched all events",
+        count: processed.length,
+        filteredEvents: processed,
       });
+    } catch (error) {
+      console.error("Error fetching events:", error);
+      this.setState({
+        fetchMessage: "Failed to fetch events.",
+      });
+    }
   };
 
-  processEvents = events => {
+  processEvents = (events) => {
+    // Only keep events that have not been cancelled,
+    // have a valid start dateTime, and fall between selected start & end date
+    const { startDate, endDate } = this.state;
+    if (!startDate || !endDate) return [];
+
     let results = events.filter(
-      el =>
+      (el) =>
         el.status !== "cancelled" &&
+        el.start &&
         el.start.dateTime &&
-        new Date(el.start.dateTime).getTime() > this.state.startDate &&
-        new Date(el.start.dateTime).getTime() < this.state.endDate
+        new Date(el.start.dateTime).getTime() > startDate &&
+        new Date(el.start.dateTime).getTime() < endDate
     );
-    console.log(results);
+
+    console.log("Filtered events:", results);
     return results;
   };
 
-  handleChange = event => {
+  handleChange = (event) => {
     event.preventDefault();
     this.setState({
-      [event.target.name]: event.target.value
+      [event.target.name]: event.target.value,
     });
   };
 
-  handleTime = date => {
+  handleTime = (date) => {
+    // date is an array of two selected dates [startDate, endDate]
     this.setState({
       startDate: new Date(date[0]).getTime(),
-      endDate: new Date(date[1]).getTime()
+      endDate: new Date(date[1]).getTime(),
     });
   };
 
   render() {
-    console.log(this.state);
+    console.log("State:", this.state);
+
     return (
       <div className="App">
         <div>
@@ -96,16 +129,14 @@ class App extends React.Component {
         </button>
         <div className="events_div">
           {this.state.filteredEvents
-            ? this.state.filteredEvents.map((el, key) => {
+            ? this.state.filteredEvents.map((el, index) => {
                 return (
-                  <>
-                    <p key={key}>
-                      {key}. {el.summary}
+                  <div key={index}>
+                    <p>
+                      {index}. {el.summary}
                     </p>
-                    <p key={key}>
-                      {new Date(el.start.dateTime).toDateString()}
-                    </p>
-                  </>
+                    <p>{new Date(el.start.dateTime).toDateString()}</p>
+                  </div>
                 );
               })
             : null}
